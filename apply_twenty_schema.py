@@ -122,13 +122,63 @@ def snake_to_camel(snake_str: str) -> str:
     components = snake_str.split('_')
     return components[0] + ''.join(x.title() for x in components[1:])
 
+def create_field_graphql(object_metadata_id: str, f: Dict[str, Any]) -> Dict[str, Any]:
+    """Try creating field using GraphQL API which might give better error messages"""
+    field_name = f["name"]
+    if '_' in field_name:
+        field_name = snake_to_camel(field_name)
+    
+    # Check if field name might be reserved
+    reserved_names = ['id', 'createdAt', 'updatedAt', 'deletedAt', 'externalId']
+    if field_name in reserved_names:
+        print(f"  WARNING: '{field_name}' might be a reserved field name, trying with suffix...")
+        field_name = field_name + "Custom"
+    
+    mutation = """
+    mutation CreateField($input: CreateFieldInput!) {
+      createOneField(input: $input) {
+        id
+        name
+        label
+        type
+      }
+    }
+    """
+    
+    variables = {
+        "input": {
+            "field": {
+                "type": f["type"],
+                "objectMetadataId": object_metadata_id,
+                "name": field_name,
+                "label": f.get("label", f["name"]),
+                "description": f.get("description", ""),
+            }
+        }
+    }
+    
+    payload = {
+        "query": mutation,
+        "variables": variables
+    }
+    
+    print(f"  DEBUG: GraphQL Payload = {payload}")
+    return http("POST", "/graphql", json=payload)
+
+
 def create_field(object_metadata_id: str, f: Dict[str, Any]) -> Dict[str, Any]:
     # Convert field name from snake_case to camelCase if needed
     field_name = f["name"]
     if '_' in field_name:
         field_name = snake_to_camel(field_name)
     
-    # Build minimal payload
+    # Check if field name might be reserved
+    reserved_names = ['id', 'createdAt', 'updatedAt', 'deletedAt', 'externalId']
+    if field_name in reserved_names:
+        print(f"  WARNING: '{field_name}' might be a reserved field name, trying with suffix...")
+        field_name = field_name + "Custom"
+    
+    # Build minimal payload - start with just required fields
     payload = {
         "type": f["type"],
         "objectMetadataId": object_metadata_id,
@@ -140,16 +190,24 @@ def create_field(object_metadata_id: str, f: Dict[str, Any]) -> Dict[str, Any]:
     if f.get("description"):
         payload["description"] = f["description"]
     
-    # isNullable - only add if explicitly set to False (default is True)
-    if "isNullable" in f:
-        payload["isNullable"] = f["isNullable"]
-    
     # Only include icon if provided and non-empty
     if f.get("icon"):
         payload["icon"] = f["icon"]
     
+    # For isNullable, if it's False and no defaultValue, we might need to make it nullable
+    # Twenty might require nullable=true for custom fields or require a defaultValue
+    is_nullable = f.get("isNullable", True)
+    has_default = "defaultValue" in f and f["defaultValue"] is not None
+    
+    if not is_nullable and not has_default:
+        # If field is not nullable and has no default, force it to be nullable
+        print(f"  WARNING: Field '{field_name}' is not nullable but has no default value. Making it nullable.")
+        payload["isNullable"] = True
+    elif "isNullable" in f:
+        payload["isNullable"] = is_nullable
+    
     # Only include defaultValue if explicitly provided and not None
-    if "defaultValue" in f and f["defaultValue"] is not None:
+    if has_default:
         payload["defaultValue"] = f["defaultValue"]
     
     # Only include settings if provided and non-empty (not empty dict)
@@ -162,28 +220,37 @@ def create_field(object_metadata_id: str, f: Dict[str, Any]) -> Dict[str, Any]:
     
     print(f"  DEBUG: Payload = {payload}")
     
-    # Try with minimal payload first
+    # Try with the payload
     try:
         return http("POST", "/rest/metadata/fields", json=payload)
     except RuntimeError as e:
-        # If it fails, try without icon
-        if "icon" in payload:
-            print(f"  DEBUG: Retrying without icon...")
-            payload_no_icon = {k: v for k, v in payload.items() if k != "icon"}
-            try:
-                return http("POST", "/rest/metadata/fields", json=payload_no_icon)
-            except RuntimeError:
-                pass
+        error_msg = str(e)
+        print(f"  DEBUG: REST API failed, trying GraphQL...")
         
-        # If still fails, try absolute minimal payload
-        print(f"  DEBUG: Retrying with absolute minimal payload...")
-        minimal_payload = {
-            "type": f["type"],
-            "objectMetadataId": object_metadata_id,
-            "name": field_name,
-            "label": f.get("label", f["name"]),
-        }
-        return http("POST", "/rest/metadata/fields", json=minimal_payload)
+        # Try GraphQL API instead
+        try:
+            return create_field_graphql(object_metadata_id, f)
+        except RuntimeError as graphql_error:
+            print(f"  DEBUG: GraphQL also failed: {graphql_error}")
+            
+            # If GraphQL also fails, try without icon
+            if "icon" in payload:
+                print(f"  DEBUG: Retrying REST without icon...")
+                payload_no_icon = {k: v for k, v in payload.items() if k != "icon"}
+                try:
+                    return http("POST", "/rest/metadata/fields", json=payload_no_icon)
+                except RuntimeError:
+                    pass
+            
+            # If still fails, try absolute minimal payload
+            print(f"  DEBUG: Retrying with absolute minimal payload...")
+            minimal_payload = {
+                "type": f["type"],
+                "objectMetadataId": object_metadata_id,
+                "name": field_name,
+                "label": f.get("label", f["name"]),
+            }
+            return http("POST", "/rest/metadata/fields", json=minimal_payload)
 
 
 def apply_schema(schema: Dict[str, Any]) -> None:
