@@ -1,0 +1,43 @@
+  - nameSingular: cliente
+    namePlural: clientes
+    labelSingular: Cliente
+    labelPlural: Clientes
+    description: Clientes básicos (custom object)
+    icon: IconUsers
+    labelIdentifierField: nombre
+
+    fields:
+      - name: external_id
+        label: External ID
+        type: TEXT
+        description: ID externo para sincronización (idempotencia)
+        icon: IconHash
+        isNullable: false
+
+      - name: nombre
+        label: Nombre
+        type: TEXT
+        description: Nombre del cliente
+        icon: IconUser
+        isNullable: false
+
+      - name: emails
+        label: Emails
+        type: EMAILS
+        description: Lista de correos
+        icon: IconMail
+        isNullable: true
+
+      - name: phones
+        label: Teléfonos
+        type: PHONES
+        description: Lista de teléfonos
+        icon: IconPhone
+        isNullable: true
+
+      - name: direccion
+        label: Dirección
+        type: ADDRESS
+        description: Dirección principal
+        icon: IconMapPin
+        isNullable: true

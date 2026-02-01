@@ -1,0 +1,46 @@
+objects:
+  - nameSingular: product
+    namePlural: products
+    labelSingular: Product
+    labelPlural: Products
+    description: Catalog Products
+    icon: IconPackage
+    labelIdentifierField: sku
+
+    fields:
+      - name: external_id
+        label: External ID
+        type: TEXT
+        description: Idempotency
+        icon: IconHash
+        isNullable: false
+
+      - name: sku
+        label: SKU
+        type: TEXT
+        description: Code sku
+        icon: IconBarcode
+        isNullable: false
+
+      - name: name
+        label: Name
+        type: TEXT
+        description: Product name
+        icon: IconTag
+        isNullable: false
+
+      - name: price
+        label: Price
+        type: CURRENCY
+        description: Catalog Price
+        icon: IconCash
+        isNullable: true
+
+      - name: active
+        label: Active
+        type: BOOLEAN
+        description: If the product is active
+        icon: IconToggleRight
+        isNullable: false
+        defaultValue: true
+
